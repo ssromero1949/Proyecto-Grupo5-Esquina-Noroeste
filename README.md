@@ -38,5 +38,38 @@ El desarrollo del proyecto está estructurado en 5 módulos fundamentales:
 - Configuración de empaquetado para convertir el código en una app nativa (`.exe`).
 - Generación de un **asistente de instalación** tradicional para el usuario final (profesor/estudiante).
 
+## Guía para el Equipo de Desarrollo (Cómo correr el proyecto)
+
+Si eres miembro del Grupo 5 y acabas de clonar este repositorio, sigue estos pasos para poder correr y editar el programa en tu computadora:
+
+### Requisitos Previos
+- Tener instalado **Node.js** en tu computadora.
+- Tener instalado **Git**.
+
+### Pasos para ejecutar en modo Desarrollo
+1. Abre tu terminal y clona el repositorio:
+   ```bash
+   git clone https://github.com/yairochoa709-ops/Proyecto-Grupo5-Esquina-Noroeste.git
+   ```
+2. Entra a la carpeta principal de la aplicación:
+   ```bash
+   cd Proyecto-Grupo5-Esquina-Noroeste/men-desktop
+   ```
+3. Instala todas las dependencias:
+   ```bash
+   npm install
+   ```
+4. Inicia el entorno de desarrollo (esto abrirá la aplicación de escritorio automáticamente):
+   ```bash
+   npm run dev
+   ```
+
+### Pasos para compilar un nuevo instalador (.exe)
+Si hacen mejoras en el código y quieren generar un nuevo instalador, solo deben ejecutar:
+```bash
+npm run build
+```
+El instalador final aparecerá en la carpeta `men-desktop/dist-electron/`.
+
 ---
 *Proyecto desarrollado para la asignatura de Investigación de Operaciones - Grupo 5*
