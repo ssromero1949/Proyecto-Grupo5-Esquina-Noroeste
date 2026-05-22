@@ -127,6 +127,49 @@ th { background: rgba(255, 255, 255, 0.05); font-weight: 600; color: var(--text-
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255,255,255,0.05);
 }
+
+/* Nuevos estilos para ruta óptima y paso actual */
+.cost-cell.current-step {
+  background: rgba(249, 115, 22, 0.4) !important; /* Naranja */
+  border-color: #f97316 !important;
+  box-shadow: 0 0 15px rgba(249, 115, 22, 0.4) !important;
+}
+
+.animated-route {
+  stroke-dasharray: 12;
+  animation: route-dash 0.8s linear infinite;
+}
+
+@keyframes route-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.manual-input {
+  width: 60px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 8px 4px;
+  font-size: 1rem;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+.manual-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.4);
+}
+.manual-input::-webkit-outer-spin-button,
+.manual-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 .cost-label { position: absolute; top: 4px; right: 6px; font-size: 0.75rem; color: var(--text-muted); }
 .supply-cell { background: rgba(59, 130, 246, 0.15); color: #93c5fd; font-weight: 600; border: 1px solid rgba(59, 130, 246, 0.3); }
 .demand-cell { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; font-weight: 600; border: 1px solid rgba(139, 92, 246, 0.3); }

@@ -4,8 +4,8 @@ export function solveNorthwestCorner(exercise) {
   let costs = exercise.costs.map(row => [...row]);
   let rows = exercise.rows;
   let cols = exercise.cols;
-  let namesRows = Array.from({length: rows}, (_, i) => `O${i+1}`);
-  let namesCols = Array.from({length: cols}, (_, i) => `D${i+1}`);
+  let namesRows = exercise.namesRows ? [...exercise.namesRows] : Array.from({length: rows}, (_, i) => `O${i+1}`);
+  let namesCols = exercise.namesCols ? [...exercise.namesCols] : Array.from({length: cols}, (_, i) => `D${i+1}`);
 
   const diff = exercise.totalSupply - exercise.totalDemand;
   
@@ -42,7 +42,8 @@ export function solveNorthwestCorner(exercise) {
     balancedSupply: [...supply],
     balancedDemand: [...demand],
     namesRows,
-    namesCols
+    namesCols,
+    currentCell: null
   });
 
   let step = 1;
@@ -92,7 +93,8 @@ export function solveNorthwestCorner(exercise) {
       balancedSupply: [...supply],
       balancedDemand: [...demand],
       namesRows,
-      namesCols
+      namesCols,
+      currentCell: { r: i, c: j }
     });
 
     step++;

@@ -54,6 +54,14 @@ export function exportToPDF(exercise, solution) {
        nextY += 4;
     }
 
+    if (exercise.statement) {
+       doc.setFontSize(10);
+       doc.setTextColor(80, 80, 80);
+       const splitStatement = doc.splitTextToSize(exercise.statement, 180);
+       doc.text(splitStatement, 14, nextY);
+       nextY += (splitStatement.length * 5) + 6;
+    }
+
     // Recorremos todos los frames para imprimir el historial visual completo
     solution.frames.forEach((frame) => {
       // Verificamos si necesitamos una nueva página antes de imprimir el siguiente paso
