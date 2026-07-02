@@ -38,6 +38,17 @@ El desarrollo del proyecto está estructurado en 5 módulos fundamentales:
 - Configuración de empaquetado para convertir el código en una app nativa (`.exe`).
 - Generación de un **asistente de instalación** tradicional para el usuario final (profesor/estudiante).
 
+### 6. Módulo de Análisis de Redes (Grafos)
+Este módulo amplía el software para incluir la resolución interactiva y paso a paso de tres algoritmos fundamentales de la teoría de redes:
+- **Ruta Más Corta (Dijkstra):** Implementación estricta usando estados de nodos "Temporales" y "Permanentes", guiando al usuario hasta trazar el camino óptimo hacia el destino.
+- **Árbol de Expansión Mínima (Kruskal/Prim):** Lógica matemática implementada a través de la gestión de fronteras y conjuntos (Conjunto C "Conectados" y Conjunto C' "No conectados").
+- **Flujo Máximo (Ford-Fulkerson):** Utiliza una búsqueda voraz (Greedy DFS) que prioriza iterativamente la ruta con la mayor capacidad disponible, restando el cuello de botella y bloqueando visualmente (en negro) las rutas saturadas.
+
+**Características Visuales y de Arquitectura del Módulo de Redes:**
+- **UI Compacta e Inteligente:** El lienzo del grafo es dinámico (`viewBox` escalable) para permitir visualizar tanto la red completa como el reproductor paso a paso de narrativa en una sola vista, eliminando por completo el *scroll* vertical.
+- **Generación Limpia de Grafos:** Algoritmo que estructura los nodos por capas aleatorias evitando el cruce masivo (telaraña) de líneas, lo que facilita enormemente la lectura de las aristas.
+- **Reportes PDF con Gráficos Vectoriales:** Se construyó un motor matemático dentro del generador de PDF (`jsPDF`) que no toma capturas de pantalla, sino que **dibuja vectorialmente** las coordenadas exactas de la red, generando un "Grafo Inicial" y un "Grafo Final" en altísima resolución dentro del reporte PDF.
+
 ## Guía para el Equipo de Desarrollo (Cómo correr el proyecto)
 
 Si eres miembro del Grupo 5 y acabas de clonar este repositorio, sigue estos pasos para poder correr y editar el programa en tu computadora:
