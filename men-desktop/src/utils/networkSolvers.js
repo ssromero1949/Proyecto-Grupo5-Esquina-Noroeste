@@ -4,6 +4,333 @@ function createFrame(base, overrides) {
   return { ...base, ...overrides };
 }
 
+function getDurationForEdge(edge, mode) {
+  if (mode === 'pert') {
+    const optimistic = Number(edge.optimistic ?? edge.cost ?? 1);
+    const mostLikely = Number(edge.mostLikely ?? edge.cost ?? 1);
+    const pessimistic = Number(edge.pessimistic ?? edge.cost ?? 1);
+    return (optimistic + (4 * mostLikely) + pessimistic) / 6;
+  }
+
+  return Number(edge.duration ?? edge.cost ?? 1);
+}
+
+function getNodeDuration(node, incomingEdges, mode) {
+  if (node.id === 'Inicio' || node.id === 'Fin') {
+    return 0;
+  }
+
+  if (mode === 'pert') {
+    const optimistic = Number(node.optimistic ?? node.cost ?? 1);
+    const mostLikely = Number(node.mostLikely ?? node.cost ?? 1);
+    const pessimistic = Number(node.pessimistic ?? node.cost ?? 1);
+    if (node.optimistic !== undefined || node.mostLikely !== undefined || node.pessimistic !== undefined) {
+      return (optimistic + (4 * mostLikely) + pessimistic) / 6;
+    }
+  }
+
+  if (node.duration !== undefined || node.cost !== undefined) {
+    return Number(node.duration ?? node.cost ?? 0);
+  }
+
+  const directEdge = incomingEdges.find((edge) => edge.to === node.id);
+  if (directEdge) {
+    return getDurationForEdge(directEdge, mode);
+  }
+
+  return 0;
+}
+
+function solveCriticalPath(exercise, mode) {
+  const { nodes, edges } = exercise;
+  const frames = [];
+
+  const activityNodes = nodes.map((n) => ({ ...n }));
+  const augmentedNodes = [{ id: 'Inicio' }, ...activityNodes, { id: 'Fin' }];
+  const startNodes = activityNodes.filter((node) => !edges.some((edge) => edge.to === node.id)).map((node) => node.id);
+  const finishNodes = activityNodes.filter((node) => !edges.some((edge) => edge.from === node.id)).map((node) => node.id);
+
+  const augmentedEdges = [
+    ...startNodes.map((nodeId) => ({ id: `start-${nodeId}`, from: 'Inicio', to: nodeId, duration: 0 })),
+    ...edges.map((edge) => ({ ...edge })),
+    ...finishNodes.map((nodeId) => ({ id: `end-${nodeId}`, from: nodeId, to: 'Fin', duration: 0 }))
+  ];
+
+  const adjacency = {};
+  const indegree = {};
+
+  augmentedNodes.forEach((n) => {
+    adjacency[n.id] = [];
+    indegree[n.id] = 0;
+  });
+
+  augmentedEdges.forEach((e) => {
+    adjacency[e.from].push(e);
+    indegree[e.to] += 1;
+  });
+
+  const queue = augmentedNodes.map((n) => n.id).filter((id) => indegree[id] === 0);
+  const topo = [];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    topo.push(current);
+    adjacency[current].forEach((e) => {
+      indegree[e.to] -= 1;
+      if (indegree[e.to] === 0) queue.push(e.to);
+    });
+  }
+
+  if (topo.length !== augmentedNodes.length) {
+    throw new Error('El grafo contiene un ciclo y no puede resolverse con CPM/PERT.');
+  }
+
+  const earliestStart = {};
+  const earliestFinish = {};
+  const predecessor = {};
+  const predecessorEdge = {};
+  const nodeDurations = {};
+
+  augmentedNodes.forEach((n) => {
+    const originalNode = activityNodes.find((candidate) => candidate.id === n.id);
+    earliestStart[n.id] = n.id === 'Inicio' ? 0 : -Infinity;
+    earliestFinish[n.id] = n.id === 'Inicio' ? 0 : -Infinity;
+    predecessor[n.id] = null;
+    predecessorEdge[n.id] = null;
+    nodeDurations[n.id] = getNodeDuration(originalNode ?? n, augmentedEdges.filter((edge) => edge.to === n.id), mode);
+  });
+
+  // Frame: Introducción y Inicio cálculo hacia adelante
+  frames.push({
+    narrative: `Se inicia el cálculo de la ruta crítica utilizando ${mode === 'pert' ? 'PERT' : 'CPM'}. Se han integrado nodos ficticios: Inicio (0) y Fin (0).`,
+    nodeStates: {},
+    activeEdges: [],
+    path: [],
+    criticalPath: [],
+    criticalEdges: [],
+    edgeDurations: {}
+  });
+
+  frames.push({
+    narrative: `Paso 1: CÁLCULO HACIA ADELANTE (IC/TC). Comienza con Inicio: IC=0, TC=0.`,
+    nodeStates: { Inicio: { earliestStart: 0, latestFinish: 0, slack: 0, critical: false } },
+    activeEdges: [],
+    path: [],
+    criticalPath: [],
+    criticalEdges: [],
+    edgeDurations: {}
+  });
+
+  topo.forEach((nodeId) => {
+    if (nodeId === 'Inicio') return;
+
+    const incoming = augmentedEdges.filter((e) => e.to === nodeId);
+    let bestPred = null;
+    let bestEdge = null;
+    let bestValue = -Infinity;
+
+    incoming.forEach((edge) => {
+      const candidate = earliestFinish[edge.from];
+      if (Number.isFinite(candidate) && candidate > bestValue) {
+        bestValue = candidate;
+        bestPred = edge.from;
+        bestEdge = edge.id;
+      }
+    });
+
+    if (bestPred !== null) {
+      earliestStart[nodeId] = bestValue;
+      earliestFinish[nodeId] = earliestStart[nodeId] + nodeDurations[nodeId];
+      predecessor[nodeId] = bestPred;
+      predecessorEdge[nodeId] = bestEdge;
+
+      const predDesc = incoming.length > 1 
+        ? `Máximo: IC=${Math.max(...incoming.map(e => earliestFinish[e.from])).toFixed(2)}.` 
+        : '';
+      
+      frames.push({
+        narrative: `${nodeId}: IC=${earliestStart[nodeId].toFixed(2)}, Duración=${nodeDurations[nodeId].toFixed(2)}, TC=${earliestFinish[nodeId].toFixed(2)}. ${predDesc}`,
+        nodeStates: {},
+        activeEdges: [],
+        path: [],
+        criticalPath: [],
+        criticalEdges: [],
+        edgeDurations: {}
+      });
+    }
+  });
+
+  const totalDuration = Number.isFinite(earliestFinish.Fin) ? earliestFinish.Fin : 0;
+
+  frames.push({
+    narrative: `Tiempo total del proyecto: ${totalDuration.toFixed(2)} unidades.`,
+    nodeStates: {},
+    activeEdges: [],
+    path: [],
+    criticalPath: [],
+    criticalEdges: [],
+    edgeDurations: {}
+  });
+
+  const latestStart = {};
+  const latestFinish = {};
+
+  augmentedNodes.forEach((n) => {
+    latestFinish[n.id] = n.id === 'Fin' ? totalDuration : Infinity;
+  });
+
+  frames.push({
+    narrative: `Paso 2: CÁLCULO HACIA ATRÁS (IL/TL). Comienza desde Fin: TL=${totalDuration.toFixed(2)}, IL=${totalDuration.toFixed(2)}.`,
+    nodeStates: { Fin: { earliestStart: totalDuration, latestFinish: totalDuration, slack: 0, critical: false } },
+    activeEdges: [],
+    path: [],
+    criticalPath: [],
+    criticalEdges: [],
+    edgeDurations: {}
+  });
+
+  for (let i = topo.length - 1; i >= 0; i -= 1) {
+    const nodeId = topo[i];
+    if (nodeId === 'Fin') {
+      latestStart[nodeId] = totalDuration;
+      latestFinish[nodeId] = totalDuration;
+      continue;
+    }
+
+    const outgoing = augmentedEdges.filter((e) => e.from === nodeId);
+    if (outgoing.length === 0) {
+      latestStart[nodeId] = latestFinish[nodeId] - nodeDurations[nodeId];
+      continue;
+    }
+
+    const successorValues = outgoing.map((edge) => latestStart[edge.to]);
+    latestFinish[nodeId] = Math.min(...successorValues);
+    latestStart[nodeId] = latestFinish[nodeId] - nodeDurations[nodeId];
+
+    const succDesc = outgoing.length > 1 
+      ? `Mínimo: TL=${Math.min(...successorValues).toFixed(2)}.` 
+      : '';
+
+    frames.push({
+      narrative: `${nodeId}: TL=${latestFinish[nodeId].toFixed(2)}, Duración=${nodeDurations[nodeId].toFixed(2)}, IL=${latestStart[nodeId].toFixed(2)}. ${succDesc}`,
+      nodeStates: {},
+      activeEdges: [],
+      path: [],
+      criticalPath: [],
+      criticalEdges: [],
+      edgeDurations: {}
+    });
+  }
+
+  const criticalNodeIds = new Set();
+  const slackValues = {};
+
+  augmentedNodes.forEach((n) => {
+    const slack = latestStart[n.id] - earliestStart[n.id];
+    slackValues[n.id] = slack;
+    if (slack === 0) {
+      criticalNodeIds.add(n.id);
+    }
+  });
+
+  frames.push({
+    narrative: `Paso 3: CÁLCULO DE HOLGURA. Fórmula: H = IL - IC.`,
+    nodeStates: {},
+    activeEdges: [],
+    path: [],
+    criticalPath: [],
+    criticalEdges: [],
+    edgeDurations: {}
+  });
+
+  augmentedNodes.forEach((n) => {
+    if (n.id === 'Inicio' || n.id === 'Fin') return;
+    
+    const slack = slackValues[n.id];
+    const indicator = slack === 0 ? '✓ CRÍTICA' : '';
+    
+    frames.push({
+      narrative: `${n.id}: H = ${latestStart[n.id].toFixed(2)} - ${earliestStart[n.id].toFixed(2)} = ${slack.toFixed(2)} ${indicator}`,
+      nodeStates: {},
+      activeEdges: [],
+      path: [],
+      criticalPath: [],
+      criticalEdges: [],
+      edgeDurations: {}
+    });
+  });
+
+  const criticalPathNodes = [];
+  let currentNode = 'Fin';
+  while (currentNode) {
+    criticalPathNodes.unshift(currentNode);
+    if (currentNode === 'Inicio') break;
+
+    const prev = predecessor[currentNode];
+    if (!prev || !criticalNodeIds.has(prev)) {
+      break;
+    }
+
+    currentNode = prev;
+  }
+
+  if (criticalPathNodes[0] !== 'Inicio') {
+    criticalPathNodes.unshift('Inicio');
+  }
+
+  const criticalEdges = augmentedEdges
+    .filter((edge) => edge.id && !edge.id.startsWith('start-') && !edge.id.startsWith('end-'))
+    .filter((edge) => criticalPathNodes.includes(edge.from) && criticalPathNodes.includes(edge.to))
+    .map((edge) => edge.id);
+
+  const nodeStates = {};
+  augmentedNodes.forEach((n) => {
+    const earliest = Number.isFinite(earliestStart[n.id]) ? earliestStart[n.id] : 0;
+    const latest = Number.isFinite(latestFinish[n.id]) ? latestFinish[n.id] : earliest;
+    nodeStates[n.id] = {
+      earliestStart: earliest,
+      latestFinish: latest,
+      latestStart: Number.isFinite(latestStart[n.id]) ? latestStart[n.id] : latest,
+      slack: (Number.isFinite(latestStart[n.id]) ? latestStart[n.id] : latest) - earliest,
+      critical: criticalNodeIds.has(n.id)
+    };
+  });
+
+  frames.push({
+    narrative: `Paso 4: RUTA CRÍTICA IDENTIFICADA. Camino: ${criticalPathNodes.join(' → ')}. Duración: ${totalDuration.toFixed(2)} unidades. Sin holgura, todo retraso afecta el proyecto.`,
+    nodeStates,
+    activeEdges: criticalEdges,
+    path: criticalPathNodes,
+    criticalPath: criticalPathNodes,
+    criticalEdges,
+    totalDuration,
+    edgeDurations: Object.fromEntries(augmentedEdges.map((edge) => [edge.id, getDurationForEdge(edge, mode)]))
+  });
+
+  return {
+    method: mode === 'pert' ? 'PERT' : 'CPM',
+    frames,
+    totalDuration,
+    criticalPath: criticalPathNodes,
+    criticalEdges,
+    finalStates: nodeStates,
+    graph: {
+      nodes: augmentedNodes,
+      edges: augmentedEdges,
+      source: 'Inicio',
+      sink: 'Fin'
+    }
+  };
+}
+
+export function solveCpm(exercise) {
+  return solveCriticalPath(exercise, 'cpm');
+}
+
+export function solvePert(exercise) {
+  return solveCriticalPath(exercise, 'pert');
+}
+
 // 1. Algoritmo de Dijkstra (Ruta Más Corta)
 export function solveDijkstra(exercise) {
   const { nodes, edges, source, sink } = exercise;

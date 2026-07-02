@@ -32,9 +32,11 @@ function drawGraph(doc, exercise, frameData, method, startY) {
 
   const isEdgeActive = (id) => frameData && frameData.activeEdges && frameData.activeEdges.includes(id);
   const isEdgeInMST = (id) => frameData && frameData.mstEdges && frameData.mstEdges.includes(id);
+  const isEdgeCritical = (id) => frameData && frameData.criticalEdges && frameData.criticalEdges.includes(id);
   const isNodeActive = (id) => frameData && frameData.activeNode === id;
   const isNodeVisited = (id) => frameData && frameData.visitedNodes && frameData.visitedNodes.includes(id);
   const isNodeInPath = (id) => frameData && frameData.path && frameData.path.includes(id);
+  const isNodeCritical = (id) => frameData && frameData.criticalPath && frameData.criticalPath.includes(id);
 
   // Aristas
   edges.forEach(e => {
@@ -42,7 +44,7 @@ function drawGraph(doc, exercise, frameData, method, startY) {
     const p2 = nodePositions[e.to];
     if (!p1 || !p2) return;
     
-    const active = isEdgeActive(e.id) || isEdgeInMST(e.id);
+    const active = isEdgeActive(e.id) || isEdgeInMST(e.id) || isEdgeCritical(e.id);
     let color = active ? [249, 115, 22] : [156, 163, 175]; // Naranja : Gris claro
     let lineWidth = active ? 0.8 : 0.4;
 
@@ -88,6 +90,10 @@ function drawGraph(doc, exercise, frameData, method, startY) {
     let label = '';
     if (method === 'Dijkstra' || method === 'Kruskal') label = `${e.cost}`;
     else if (method === 'Ford-Fulkerson') label = `${capDisp}`;
+    else if (method === 'CPM' || method === 'PERT') {
+      const durationValue = frameData && frameData.edgeDurations && frameData.edgeDurations[e.id] !== undefined ? frameData.edgeDurations[e.id] : (e.duration ?? e.cost);
+      label = `${Number(durationValue).toFixed(2)}`;
+    }
     
     doc.setFillColor(255, 255, 255);
     doc.rect(midX - 3, midY - 2, 6, 4, 'F');
@@ -101,7 +107,7 @@ function drawGraph(doc, exercise, frameData, method, startY) {
     const p = nodePositions[n.id];
     if (!p) return;
     
-    const active = isNodeActive(n.id) || isNodeInPath(n.id);
+    const active = isNodeActive(n.id) || isNodeInPath(n.id) || isNodeCritical(n.id);
     const visited = isNodeVisited(n.id);
     
     let bg = [55, 65, 81]; // Gris oscuro
@@ -121,6 +127,13 @@ function drawGraph(doc, exercise, frameData, method, startY) {
       if (state && !active) {
          if (state.status === 'C') bg = [5, 150, 105];
          else bg = [55, 65, 81];
+      }
+    } else if ((method === 'CPM' || method === 'PERT') && frameData && frameData.nodeStates) {
+      const state = frameData.nodeStates[n.id];
+      if (state && !active) {
+        if (state.critical) bg = [245, 158, 11];
+        else if (state.slack === 0) bg = [59, 130, 246];
+        else bg = [55, 65, 81];
       }
     }
     
@@ -145,6 +158,9 @@ function drawGraph(doc, exercise, frameData, method, startY) {
     } else if (method === 'Kruskal' && frameData && frameData.nodeStates) {
       const state = frameData.nodeStates[n.id];
       if (state) topLabel = state.status === 'C' ? '[C]' : "[C']";
+    } else if ((method === 'CPM' || method === 'PERT') && frameData && frameData.nodeStates) {
+      const state = frameData.nodeStates[n.id];
+      if (state) topLabel = `[ES:${state.earliestStart.toFixed(0)}, LF:${state.latestFinish.toFixed(0)}]`;
     }
     
     if (topLabel) {
@@ -278,6 +294,10 @@ export function exportNetworkToPDF(exercise, solution) {
     doc.text(`Aristas en el Arbol: ${solution.mstEdges.length}`, 14, currentY);
   } else if (solution.method === 'Ford-Fulkerson') {
     doc.text(`Flujo Maximo: ${solution.maxFlow}`, 14, currentY);
+  } else if (solution.method === 'CPM' || solution.method === 'PERT') {
+    doc.text(`Duración Total del Proyecto: ${solution.totalDuration.toFixed(2)}`, 14, currentY);
+    currentY += 6;
+    doc.text(`Ruta Crítica: ${solution.criticalPath.join(' -> ')}`, 14, currentY);
   }
   currentY += 15;
 

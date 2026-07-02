@@ -1,18 +1,32 @@
 import { useState, useEffect } from 'react';
 import { generateNetworkBatch } from '../../utils/networkGenerator';
-import { solveDijkstra, solveKruskal, solveFordFulkerson } from '../../utils/networkSolvers';
+import { solveDijkstra, solveKruskal, solveFordFulkerson, solveCpm, solvePert } from '../../utils/networkSolvers';
 import { exportNetworkToPDF } from '../../utils/networkPdfGenerator';
 
-export default function NetworkModule() {
+export default function NetworkModule({ initialMethod = 'dijkstra', viewMode = 'network' }) {
   const [exercises, setExercises] = useState([]);
   const [selectedExercise, setSelectedExercise] = useState(null);
-  const [selectedMethod, setSelectedMethod] = useState('dijkstra'); // 'dijkstra', 'kruskal', 'ford-fulkerson'
+  const [selectedMethod, setSelectedMethod] = useState(initialMethod);
   const [solutionsCache, setSolutionsCache] = useState({});
   const [currentFrames, setCurrentFrames] = useState({});
+  const isCriticalView = viewMode === 'critical';
+  const availableMethods = isCriticalView
+    ? ['cpm', 'pert']
+    : ['dijkstra', 'kruskal', 'ford-fulkerson', 'cpm', 'pert'];
 
   useEffect(() => {
     handleGenerateNew();
   }, []);
+
+  useEffect(() => {
+    setSelectedMethod(initialMethod);
+  }, [initialMethod]);
+
+  useEffect(() => {
+    if (!availableMethods.includes(selectedMethod)) {
+      setSelectedMethod(availableMethods[0] || initialMethod);
+    }
+  }, [availableMethods, initialMethod, selectedMethod]);
 
   const handleGenerateNew = () => {
     const batch = generateNetworkBatch(5);
@@ -32,6 +46,8 @@ export default function NetworkModule() {
       if (selectedMethod === 'dijkstra') res = solveDijkstra(selectedExercise);
       else if (selectedMethod === 'kruskal') res = solveKruskal(selectedExercise);
       else if (selectedMethod === 'ford-fulkerson') res = solveFordFulkerson(selectedExercise);
+      else if (selectedMethod === 'cpm') res = solveCpm(selectedExercise);
+      else if (selectedMethod === 'pert') res = solvePert(selectedExercise);
       
       const cacheKey = `${selectedExercise.id}-${selectedMethod}`;
       setSolutionsCache(prev => ({ ...prev, [cacheKey]: res }));
@@ -64,7 +80,8 @@ export default function NetworkModule() {
   const renderGraph = () => {
     if (!selectedExercise) return null;
     
-    const { nodes, edges } = selectedExercise;
+    const activeGraph = currentSolution?.graph ?? selectedExercise;
+    const { nodes, edges } = activeGraph;
     const width = 800;
     const height = 400;
     const centerX = width / 2;
@@ -73,9 +90,11 @@ export default function NetworkModule() {
     
     // Sort nodes to put Source at left, Sink at right
     const sortedNodes = [...nodes];
-    const sourceNode = sortedNodes.find(n => n.id === selectedExercise.source);
-    const sinkNode = sortedNodes.find(n => n.id === selectedExercise.sink);
-    const middleNodes = sortedNodes.filter(n => n.id !== selectedExercise.source && n.id !== selectedExercise.sink);
+    const sourceId = activeGraph.source ?? selectedExercise.source;
+    const sinkId = activeGraph.sink ?? selectedExercise.sink;
+    const sourceNode = sortedNodes.find(n => n.id === sourceId);
+    const sinkNode = sortedNodes.find(n => n.id === sinkId);
+    const middleNodes = sortedNodes.filter(n => n.id !== sourceId && n.id !== sinkId);
     
     const nodePositions = {};
     if (sourceNode) nodePositions[sourceNode.id] = { x: 60, y: centerY };
@@ -93,9 +112,11 @@ export default function NetworkModule() {
     const isNodeActive = (id) => frameData && frameData.activeNode === id;
     const isNodeVisited = (id) => frameData && frameData.visitedNodes && frameData.visitedNodes.includes(id);
     const isNodeInPath = (id) => frameData && frameData.path && frameData.path.includes(id);
+    const isNodeCritical = (id) => frameData && frameData.criticalPath && frameData.criticalPath.includes(id);
     
     const isEdgeActive = (id) => frameData && frameData.activeEdges && frameData.activeEdges.includes(id);
     const isEdgeInMST = (id) => frameData && frameData.mstEdges && frameData.mstEdges.includes(id);
+    const isEdgeCritical = (id) => frameData && frameData.criticalEdges && frameData.criticalEdges.includes(id);
 
     return (
       <svg viewBox="0 0 800 400" style={{ width: '100%', height: '100%', minHeight: '200px', background: 'rgba(0,0,0,0.1)', borderRadius: '8px' }}>
@@ -117,7 +138,7 @@ export default function NetworkModule() {
           const p2 = nodePositions[e.to];
           if (!p1 || !p2) return null;
           
-          const active = isEdgeActive(e.id) || isEdgeInMST(e.id);
+          const active = isEdgeActive(e.id) || isEdgeInMST(e.id) || isEdgeCritical(e.id);
           let strokeColor = active ? '#f97316' : '#4b5563';
           let strokeWidth = active ? 4 : 2;
           let marker = selectedMethod === 'kruskal' ? null : (active ? 'url(#arrow-active)' : 'url(#arrow)');
@@ -137,6 +158,9 @@ export default function NetworkModule() {
               strokeWidth = 3;
               marker = 'url(#arrow-blocked)';
             }
+          } else if (selectedMethod === 'cpm' || selectedMethod === 'pert') {
+            const durationValue = frameData && frameData.edgeDurations && frameData.edgeDurations[e.id] !== undefined ? frameData.edgeDurations[e.id] : (e.duration ?? e.cost);
+            label = `D: ${Number(durationValue).toFixed(2)}`;
           }
 
           return (
@@ -160,7 +184,7 @@ export default function NetworkModule() {
           const p = nodePositions[n.id];
           if (!p) return null;
           
-          const active = isNodeActive(n.id) || isNodeInPath(n.id);
+          const active = isNodeActive(n.id) || isNodeInPath(n.id) || isNodeCritical(n.id);
           const visited = isNodeVisited(n.id);
           let bg = '#374151';
           let border = '#6b7280';
@@ -169,9 +193,9 @@ export default function NetworkModule() {
             bg = '#ea580c'; border = '#f97316';
           } else if (visited) {
             bg = '#059669'; border = '#10b981';
-          } else if (n.id === selectedExercise.source) {
+          } else if (n.id === (activeGraph.source ?? selectedExercise.source)) {
             bg = '#2563eb'; border = '#3b82f6';
-          } else if (n.id === selectedExercise.sink) {
+          } else if (n.id === (activeGraph.sink ?? selectedExercise.sink)) {
             bg = '#7c3aed'; border = '#8b5cf6';
           }
 
@@ -211,6 +235,18 @@ export default function NetworkModule() {
           } else if (selectedMethod === 'dijkstra' && frameData && frameData.distances) {
             const d = frameData.distances[n.id];
             topLabel = `d: ${d === Infinity ? '∞' : d}`;
+          } else if ((selectedMethod === 'cpm' || selectedMethod === 'pert') && frameData && frameData.nodeStates) {
+            const state = frameData.nodeStates[n.id];
+            if (state) {
+              topLabel = `[ES:${state.earliestStart.toFixed(0)}, LF:${state.latestFinish.toFixed(0)}]`;
+              topLabelColor = state.critical ? '#fbbf24' : '#93c5fd';
+
+              if (!active && state.critical) {
+                bg = '#f59e0b'; border = '#fbbf24';
+              } else if (!active && state.slack === 0) {
+                bg = '#1d4ed8'; border = '#60a5fa';
+              }
+            }
           }
 
           return (
@@ -236,7 +272,7 @@ export default function NetworkModule() {
       <aside className="sidebar glass-panel">
         <div className="header-actions" style={{ flexDirection: 'column', gap: '15px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-            <h1 style={{ margin: 0 }}>Grafos</h1>
+            <h1 style={{ margin: 0 }}>{viewMode === 'critical' ? 'Ruta Crítica' : 'Grafos'}</h1>
             <button className="btn" onClick={handleGenerateNew}>↻ Generar</button>
           </div>
           
@@ -247,9 +283,11 @@ export default function NetworkModule() {
               onChange={e => setSelectedMethod(e.target.value)}
               style={{ width: '100%', padding: '8px', marginTop: '5px', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}
             >
-              <option value="dijkstra">Ruta Más Corta (Dijkstra)</option>
-              <option value="kruskal">Árbol de Expansión Mínima (Kruskal)</option>
-              <option value="ford-fulkerson">Flujo Máximo (Ford-Fulkerson)</option>
+              {availableMethods.includes('dijkstra') && <option value="dijkstra">Ruta Más Corta (Dijkstra)</option>}
+              {availableMethods.includes('kruskal') && <option value="kruskal">Árbol de Expansión Mínima (Kruskal)</option>}
+              {availableMethods.includes('ford-fulkerson') && <option value="ford-fulkerson">Flujo Máximo (Ford-Fulkerson)</option>}
+              {availableMethods.includes('cpm') && <option value="cpm">Ruta Crítica (CPM)</option>}
+              {availableMethods.includes('pert') && <option value="pert">Ruta Crítica (PERT)</option>}
             </select>
           </div>
         </div>
@@ -286,6 +324,7 @@ export default function NetworkModule() {
                     {selectedMethod === 'dijkstra' && 'Buscando la ruta más corta desde Origen (S) a Destino (T).'}
                     {selectedMethod === 'kruskal' && 'Conectando todos los nodos con el menor costo posible.'}
                     {selectedMethod === 'ford-fulkerson' && 'Calculando el flujo máximo desde Origen (S) a Destino (T).'}
+                    {(selectedMethod === 'cpm' || selectedMethod === 'pert') && 'Identificando la ruta crítica y el tiempo total mínimo del proyecto.'}
                   </div>
                 )}
               </div>
@@ -295,7 +334,7 @@ export default function NetworkModule() {
                 </button>
               ) : (
                 <button className="btn" style={{ background: 'var(--success)' }} onClick={handleSolve}>
-                  ▶ Resolver por {selectedMethod === 'dijkstra' ? 'Dijkstra' : selectedMethod === 'kruskal' ? 'Kruskal' : 'Ford-Fulkerson'}
+                  ▶ Resolver por {selectedMethod === 'dijkstra' ? 'Dijkstra' : selectedMethod === 'kruskal' ? 'Kruskal' : selectedMethod === 'ford-fulkerson' ? 'Ford-Fulkerson' : selectedMethod === 'cpm' ? 'CPM' : 'PERT'}
                 </button>
               )}
             </div>
@@ -363,6 +402,11 @@ export default function NetworkModule() {
               {selectedMethod === 'ford-fulkerson' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#000000' }}></div> Bloqueado
+                </div>
+              )}
+              {(selectedMethod === 'cpm' || selectedMethod === 'pert') && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#f59e0b' }}></div> Ruta Crítica
                 </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>

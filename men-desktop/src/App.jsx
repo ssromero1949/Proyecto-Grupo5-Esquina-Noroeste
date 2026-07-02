@@ -37,13 +37,20 @@ function App() {
           >
             🕸️ Análisis de Redes
           </button>
+          <button 
+            className={`btn ${activeTab === 'critical' ? 'active-tab' : ''}`}
+            style={activeTab === 'critical' ? { background: 'var(--primary)', color: '#fff' } : { background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)' }}
+            onClick={() => setActiveTab('critical')}
+          >
+            📈 Ruta Crítica
+          </button>
         </div>
         <div style={{ width: '150px' }}></div> {/* Spacer para centrar los botones */}
       </nav>
 
       {/* Contenedor Principal */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-        {activeTab === 'men' ? <MenModule /> : <NetworkModule />}
+        {activeTab === 'men' ? <MenModule /> : activeTab === 'critical' ? <NetworkModule initialMethod="cpm" viewMode="critical" /> : <NetworkModule />}
       </div>
     </div>
   );
